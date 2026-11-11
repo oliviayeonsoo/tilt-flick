@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f1115">
+<title>기울여 넘기기 실험</title>
+<style>
+/* 레이아웃: 설정·설문은 한 열로 쌓인 폼, 실험은 화면 전체를 쓰는 세로 숏폼 피드 */
+:root {
+  --bg: #f5f6f8; --surface: #ffffff; --line: #dcdfe5; --fg: #16181d; --muted: #5d6370;
+  --accent: #2f6df6; --accent-fg: #ffffff; --good: #1f9d55; --warn: #c27c0e; --bad: #d64545;
+  --feed: #0f1115; --feed-fg: #f3f4f6;
+  --font: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111318; --surface: #1a1d24; --line: #2c313b; --fg: #eceef2; --muted: #9aa1ad;
+    --accent: #6c9bff; --accent-fg: #0b1020; --good: #3ccf7a; --warn: #f0b54a; --bad: #ff7b7b; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--font); -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
+button, input, select, textarea { font: inherit; color: inherit; }
+.screen { display: none; min-height: 100%; }
+.screen.on { display: block; }
+.wrap { max-width: 560px; margin: 0 auto; padding: max(20px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); display: grid; gap: 16px; }
+h1 { font-size: 22px; margin: 4px 0 0; letter-spacing: -0.01em; }
+h2 { font-size: 16px; margin: 0; }
+p { margin: 0; }
+.muted { color: var(--muted); font-size: 13px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: grid; gap: 12px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+label.f { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+input[type=text], input[type=number], select, textarea { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 16px; color: var(--fg); }
+textarea { min-height: 70px; resize: vertical; }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { text-align: center; border: 1px solid var(--line); border-radius: 10px; padding: 10px 4px; font-size: 14px; cursor: pointer; background: var(--bg); }
+.seg input:checked + label { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+.seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn { appearance: none; border: 0; border-radius: 12px; padding: 14px 16px; font-weight: 700; font-size: 16px; background: var(--accent); color: var(--accent-fg); cursor: pointer; width: 100%; }
+.btn.sec { background: transparent; color: var(--fg); border: 1px solid var(--line); font-weight: 600; }
+.btn.danger { background: transparent; color: var(--bad); border: 1px solid var(--bad); }
+.btn:disabled { opacity: .45; }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.order { font-family: var(--mono); font-size: 13px; background: var(--bg); border-radius: 10px; padding: 10px 12px; line-height: 1.7; }
+details summary { cursor: pointer; font-weight: 600; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 14px; font-variant-numeric: tabular-nums; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; text-align: right; font-weight: 600; }
+.hist { display: grid; gap: 6px; font-size: 13px; }
+.hist div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+.note { font-size: 13px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--warn) 14%, transparent); }
+
+/* ---------- 피드 ---------- */
+#feedScreen { position: fixed; inset: 0; background: var(--feed); color: var(--feed-fg); overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+#feedScreen.on { display: block; }
+.vcard { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: 0 max(18px, env(safe-area-inset-right)) calc(36px + env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left)); transition: transform .26s cubic-bezier(.2,.8,.2,1); will-change: transform; }
+.vcard .big { position: absolute; top: 38%; left: 0; right: 0; text-align: center; font-size: 72px; font-weight: 800; opacity: .22; font-variant-numeric: tabular-nums; }
+.vcard .who { font-weight: 700; font-size: 16px; }
+.vcard .cap { font-size: 14px; opacity: .85; margin-top: 4px; }
+.vcard .side { position: absolute; right: max(14px, env(safe-area-inset-right)); bottom: calc(120px + env(safe-area-inset-bottom)); display: grid; gap: 18px; }
+.vcard .side i { display: block; width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,.18); }
+.vcard .prog { height: 3px; background: rgba(255,255,255,.25); margin-top: 14px; border-radius: 2px; overflow: hidden; }
+.vcard .prog b { display: block; height: 100%; width: 0; background: #fff; animation: play 7s linear infinite; }
+@keyframes play { to { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .vcard { transition: none; } .vcard .prog b { animation: none; width: 40%; } }
+
+.hud { position: absolute; top: 0; left: 0; right: 0; padding: calc(10px + env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 0 max(14px, env(safe-area-inset-left)); display: flex; justify-content: space-between; align-items: center; gap: 8px; z-index: 5; font-size: 13px; font-variant-numeric: tabular-nums; }
+.pill { background: rgba(0,0,0,.45); padding: 5px 10px; border-radius: 999px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.hud button { background: rgba(0,0,0,.45); border: 0; color: inherit; padding: 6px 12px; border-radius: 999px; font-size: 13px; }
+.cue { position: absolute; left: 50%; top: calc(64px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 6; font-weight: 800; font-size: 20px; padding: 12px 22px; border-radius: 999px; background: #fff; color: #111; box-shadow: 0 6px 24px rgba(0,0,0,.35); white-space: nowrap; }
+.cue.prev { background: #ffd34d; }
+.flash { position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: 0; transition: opacity .25s; }
+.flash.ok { background: rgba(60,207,122,.25); } .flash.bad { background: rgba(255,90,90,.28); }
+.regrip { position: absolute; inset: 0; z-index: 8; display: grid; place-items: center; background: rgba(15,17,21,.86); text-align: center; padding: 24px; }
+.regrip b { font-size: 26px; display: block; margin-bottom: 8px; }
+.gauge { position: absolute; left: max(14px, env(safe-area-inset-left)); right: max(14px, env(safe-area-inset-right)); bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 5; height: 16px; border-radius: 8px; background: rgba(0,0,0,.45); }
+.gauge .z { position: absolute; top: 0; bottom: 0; background: rgba(255,255,255,.12); }
+.gauge .t { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #ffd34d; }
+.gauge .n { position: absolute; top: 2px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: #fff; }
+.gauge .lab { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: space-between; font-size: 11px; opacity: .85; font-family: var(--mono); }
+.center-msg { position: absolute; inset: 0; z-index: 7; display: grid; place-items: center; text-align: center; padding: 24px; background: rgba(15,17,21,.9); }
+.center-msg .inner { display: grid; gap: 14px; max-width: 360px; }
+.center-msg .count { font-size: 64px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* 컴퓨터에서 센서 없이 시험할 때 */
+.sim { position: absolute; right: max(10px, env(safe-area-inset-right)); top: calc(56px + env(safe-area-inset-top)); z-index: 9; background: rgba(0,0,0,.7); padding: 10px; border-radius: 12px; display: grid; gap: 6px; font-size: 12px; width: 190px; }
+.sim button { background: rgba(255,255,255,.15); border: 0; color: #fff; padding: 6px; border-radius: 8px; font-size: 12px; }
+.sim .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+/* 설문 */
+.tlx { display: grid; gap: 4px; }
+.tlx .ends { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+.tlx output { font-variant-numeric: tabular-nums; font-weight: 700; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.likert { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.likert label { padding: 10px 0; }
+</style>
+</head>
+<body>
+
+<!-- ================= 1. 설정 ================= -->
+<section class="screen on" id="setup">
+  <div class="wrap">
+    <div>
+      <p class="muted">HCI 3팀 · 누운 자세 기울기 넘기기</p>
+      <h1>기울여 넘기기 실험</h1>
+    </div>
+
+    <div class="card">
+      <h2>참가자와 조건</h2>
+      <div class="row">
+        <label class="f">참가자 번호 <input id="pid" type="number" inputmode="numeric" min="1" value="1"></label>
+        <label class="f">잡는 손
+          <select id="hand"><option value="R">오른손</option><option value="L">왼손</option></select>
+        </label>
+      </div>
+      <div class="f" style="display:grid;gap:4px"><span class="muted">자세</span>
+        <div class="seg" role="radiogroup" aria-label="자세">
+          <input type="radio" name="posture" id="po-sit" value="sit" checked><label for="po-sit">앉음</label>
+          <input type="radio" name="posture" id="po-sup" value="supine"><label for="po-sup">누움(천장)</label>
+          <input type="radio" name="posture" id="po-side" value="side"><label for="po-side">누움(옆)</label>
+        </div>
+      </div>
+      <div class="f" style="display:grid;gap:4px"><span class="muted">넘기는 방식</span>
+        <div class="seg" role="radiogroup" aria-label="방식">
+          <input type="radio" name="method" id="me-thumb" value="thumb" checked><label for="me-thumb">엄지 스와이프</label>
+          <input type="radio" name="method" id="me-fixed" value="fixed"><label for="me-fixed">고정 기울기</label>
+          <input type="radio" name="method" id="me-adapt" value="adaptive"><label for="me-adapt">적응 기울기</label>
+        </div>
+      </div>
+      <div class="order" id="orderBox" aria-live="polite"></div>
+    </div>
+
+    <details class="card">
+      <summary>실험 세부 설정</summary>
+      <div class="row">
+        <label class="f">본 실험 길이(초) <input id="duration" type="number" value="180" min="30"></label>
+        <label class="f">고쳐 잡기 지시(초) <input id="regripAt" type="text" value="60,120"></label>
+      </div>
+      <div class="f" style="display:grid;gap:4px"><span class="muted">기울기 방향</span>
+        <div class="seg">
+          <input type="radio" name="mapping" id="map-push" value="pushNext" checked><label for="map-push">밀면 다음</label>
+          <input type="radio" name="mapping" id="map-pull" value="pullNext"><label for="map-pull">당기면 다음</label>
+        </div>
+        <span class="muted">밀기 = 화면 위쪽 끝을 바깥으로, 당기기 = 내 얼굴 쪽으로</span>
+      </div>
+      <div class="row">
+        <label class="f">넘김 각도(도) <input id="pT" type="number" value="15" step="1"></label>
+        <label class="f">복귀 제한(ms) <input id="pW" type="number" value="500" step="50"></label>
+        <label class="f">적응: 가만히(ms) <input id="pStill" type="number" value="1000" step="100"></label>
+        <label class="f">지시 간격(초) <input id="pGap" type="text" value="4-8"></label>
+      </div>
+      <label class="f">추가 방식(예비 시험용)
+        <select id="extraMode"><option value="">없음</option><option value="gravity">기존 앱식(중력만, 기준 고정)</option></select>
+      </label>
+      <label class="f" style="grid-template-columns:auto 1fr;align-items:center;gap:8px"><input id="showGauge" type="checkbox"> 본 실험 중에도 기울기 막대 보이기</label>
+    </details>
+
+    <button class="btn" id="startBtn">센서 켜고 시작</button>
+    <p class="muted" id="sensorNote">아이폰은 '동작 및 방향' 접근을 허용해야 합니다. 화면 세로 고정을 켜 주세요.</p>
+
+    <div class="card">
+      <h2>저장된 기록</h2>
+      <div class="hist" id="hist"><p class="muted">아직 없습니다.</p></div>
+      <button class="btn sec" id="exportAll">전체 요약 CSV 저장</button>
+      <button class="btn danger" id="clearAll">기록 모두 지우기</button>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 2. 피드 (캘리브레이션 · 연습 · 본 실험) ================= -->
+<section class="screen" id="feedScreen" aria-label="숏폼 피드">
+  <div id="cards"></div>
+  <div class="flash" id="flash"></div>
+  <div class="hud">
+    <span class="pill" id="hudLeft">연습</span>
+    <span class="pill" id="hudMid"></span>
+    <button id="abortBtn">중단</button>
+  </div>
+  <div class="cue" id="cue" hidden></div>
+  <div class="gauge" id="gauge" hidden>
+    <div class="lab"><span id="gLab1">기울기 0°</span><span id="gLab2"></span></div>
+    <div class="z" id="gZone"></div><div class="t" id="gT1"></div><div class="t" id="gT2"></div><div class="n" id="gN"></div>
+  </div>
+  <div class="regrip" id="regrip" hidden><div><b>폰을 고쳐 잡으세요</b>편한 자세로 다시 잡고 계속 시청하세요</div></div>
+  <div class="center-msg" id="msg" hidden><div class="inner" id="msgInner"></div></div>
+  <div class="sim" id="sim" hidden>
+    <b>센서 없음 · 시뮬레이터</b>
+    <label>앞뒤 <span id="simPv">0</span>° <input id="simP" type="range" min="-60" max="60" value="0"></label>
+    <label>옆 <span id="simRv">0</span>° <input id="simR" type="range" min="-60" max="60" value="0"></label>
+    <div class="two"><button id="simPush">탁 밀기</button><button id="simPull">탁 당기기</button></div>
+    <div class="two"><button id="simShake">흔들림</button><button id="simRegrip">고쳐잡기 +10°</button></div>
+  </div>
+</section>
+
+<!-- ================= 3. 설문 ================= -->
+<section class="screen" id="survey">
+  <div class="wrap">
+    <div><p class="muted" id="svCond"></p><h1>방금 조건 평가</h1></div>
+    <div class="card" id="tlxBox"><h2>작업 부담 (NASA-TLX, 0–100)</h2></div>
+    <div class="card">
+      <h2>조작감</h2>
+      <p class="muted">이 방식으로 넘기는 것이 얼마나 편했나요? (1 매우 불편 – 7 매우 편함)</p>
+      <div class="seg likert" id="likert"></div>
+    </div>
+    <div class="card">
+      <label class="f">실험자 메모 (참가자 발언, 특이사항) <textarea id="memo"></textarea></label>
+    </div>
+    <button class="btn" id="svSave">저장하고 결과 보기</button>
+  </div>
+</section>
+
+<!-- ================= 4. 결과 ================= -->
+<section class="screen" id="result">
+  <div class="wrap">
+    <div><p class="muted" id="rsCond"></p><h1>조건 결과</h1></div>
+    <div class="card"><dl class="kv" id="rsKv"></dl></div>
+    <p class="muted">오작동 = 지시가 없을 때 넘어감 · 잘못 넘김 = 지시와 반대로 넘어감 · 놓침 = 5초 안에 못 넘김</p>
+    <button class="btn" id="rsSave">이 조건 원자료 저장 (JSON)</button>
+    <button class="btn sec" id="rsCopy">요약 복사</button>
+    <button class="btn sec" id="rsNext">다음 조건으로</button>
+  </div>
+</section>
+
+<script src="tilt-core.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const TC = window.TiltCore;
+const now = () => performance.now();
+
+/* ---------- 조건 이름 ---------- */
+const NAMES = {
+  method: { thumb: '엄지 스와이프', fixed: '고정 기울기', adaptive: '적응 기울기', gravity: '기존 앱식(중력)' },
+  posture: { sit: '앉음', supine: '누움(천장)', side: '누움(옆)' },
+};
+const radio = name => document.querySelector(`input[name=${name}]:checked`).value;
+
+/* ---------- 참가자별 추천 순서 (자세 블록 교차 + 방식 Williams 순서) ---------- */
+const SEQ3 = [['thumb','fixed','adaptive'],['fixed','adaptive','thumb'],['adaptive','thumb','fixed'],
+              ['adaptive','fixed','thumb'],['thumb','adaptive','fixed'],['fixed','thumb','adaptive']];
+function renderOrder() {
+  const p = Math.max(1, parseInt($('pid').value || '1', 10));
+  const postures = p % 2 === 1 ? ['sit', 'supine'] : ['supine', 'sit'];
+  const s1 = SEQ3[(p - 1) % 6], s2 = SEQ3[p % 6];
+  $('orderBox').innerHTML = `P${p} 추천 순서<br>1블록 ${NAMES.posture[postures[0]]}: ${s1.map(m => NAMES.method[m]).join(' → ')}<br>` +
+    `2블록 ${NAMES.posture[postures[1]]}: ${s2.map(m => NAMES.method[m]).join(' → ')}`;
+}
+$('pid').addEventListener('input', renderOrder); renderOrder();
+
+/* ---------- 저장소 ---------- */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+function renderHist() {
+  const list = store.get('tf.sessions', []);
+  $('hist').innerHTML = list.length ? list.slice().reverse().map(s =>
+    `<div><span>P${s.meta.pid} · ${NAMES.posture[s.meta.posture]} · ${NAMES.method[s.meta.method]}</span>` +
+    `<span>오작동 ${s.summary.falseFlips} · 놓침 ${s.summary.misses}</span></div>`).join('') : '<p class="muted">아직 없습니다.</p>';
+}
+renderHist();
+
+/* ---------- 파일 저장 ---------- */
+async function saveFile(name, text, mime) {
+  const blob = new Blob([text], { type: mime });
+  try {
+    const file = new File([blob], name, { type: mime });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+const CSV_HEAD = ['id','pid','hand','posture','method','mapping','start','duration_s','cues','hits','misses','wrong','falseFlips','falseFlips_afterRegrip','held','rebases','rt_mean_ms','rt_median_ms','tlx_mental','tlx_physical','tlx_temporal','tlx_performance','tlx_effort','tlx_frustration','tlx_raw','feel_1to7','stillSpeed','tremor_sd'];
+function csvRow(s) {
+  const m = s.meta, u = s.summary, v = s.survey || {};
+  const vals = [s.id, m.pid, m.hand, m.posture, m.method, m.mapping, m.start, m.duration, u.cues, u.hits, u.misses, u.wrong, u.falseFlips, u.falseFlipsAfterRegrip, u.held, u.rebases, u.rtMean, u.rtMedian,
+    v.mental, v.physical, v.temporal, v.performance, v.effort, v.frustration, v.raw, v.feel, m.calib ? m.calib.stillSpeed : '', m.calib ? m.calib.tremorSd : ''];
+  return vals.map(x => x === undefined || x === null ? '' : String(x).includes(',') ? `"${x}"` : x).join(',');
+}
+$('exportAll').onclick = () => {
+  const list = store.get('tf.sessions', []);
+  saveFile(`tiltflick_summary_${new Date().toISOString().slice(0,10)}.csv`, '﻿' + [CSV_HEAD.join(','), ...list.map(csvRow)].join('\n'), 'text/csv');
+};
+let clearArmed = false;
+$('clearAll').onclick = () => {
+  if (!clearArmed) { clearArmed = true; $('clearAll').textContent = '한 번 더 누르면 모두 지워집니다'; setTimeout(() => { clearArmed = false; $('clearAll').textContent = '기록 모두 지우기'; }, 3000); return; }
+  for (const s of store.get('tf.sessions', [])) store.del('tf.raw.' + s.id);
+  store.set('tf.sessions', []); clearArmed = false; $('clearAll').textContent = '기록 모두 지우기'; renderHist();
+};
+
+/* ---------- 소리 ---------- */
+let audio = null;
+function beep(freq = 880, ms = 160) {
+  try { if (!audio) return; const o = audio.createOscillator(), g = audio.createGain();
+    o.frequency.value = freq; g.gain.value = 0.15; o.connect(g); g.connect(audio.destination); o.start(); o.stop(audio.currentTime + ms / 1000); } catch {}
+}
+
+/* ---------- 센서 ---------- */
+let lastR = null, sensorSeen = false, simOn = false;
+const SIM_FORCED = new URLSearchParams(location.search).has('sim');
+const sim = { p: 0, r: 0, extra: 0 };
+function onOrient(e) {
+  if (e.beta == null) return;
+  sensorSeen = true;
+  lastR = TC.rotFromEuler(e.alpha || 0, e.beta, e.gamma || 0);
+  tick();
+}
+function simR() { return TC.rotFromEuler(0, 60 + sim.p + sim.extra, sim.r); }
+async function enableSensor() {
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const st = await DeviceOrientationEvent.requestPermission();
+      if (st !== 'granted') return false;
+    }
+  } catch { return false; }
+  window.addEventListener('deviceorientation', onOrient);
+  return true;
+}
+let wakeLock = null;
+async function keepAwake() { try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && phase !== 'setup') keepAwake(); });
+
+/* ---------- 실행 상태 ---------- */
+let cfg = null, phase = 'setup', engine = null, run = null;
+
+function readCfg() {
+  const extra = $('extraMode').value;
+  const gap = $('pGap').value.split('-').map(Number);
+  return {
+    pid: parseInt($('pid').value || '1', 10), hand: $('hand').value, posture: radio('posture'),
+    method: extra || radio('method'), mapping: radio('mapping'),
+    duration: Math.max(30, parseInt($('duration').value, 10) || 180),
+    regripAt: $('regripAt').value.split(',').map(s => parseFloat(s)).filter(x => x > 0),
+    T: parseFloat($('pT').value) || 15, W: parseFloat($('pW').value) || 500, stillTime: parseFloat($('pStill').value) || 1000,
+    gapMin: gap[0] || 4, gapMax: gap[1] || gap[0] || 8, cueTimeout: 5000, prevRatio: 0.2,
+    showGauge: $('showGauge').checked,
+  };
+}
+
+$('startBtn').onclick = async () => {
+  cfg = readCfg();
+  try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch {}
+  const isTilt = cfg.method !== 'thumb';
+  if (isTilt && SIM_FORCED) startSim();
+  else if (isTilt) {
+    const ok = await enableSensor();
+    if (!ok) { $('sensorNote').textContent = '센서 접근이 거부됐습니다. 설정 > Safari > 동작 및 방향 접근을 켜고 페이지를 새로고침하세요.'; return; }
+  }
+  keepAwake();
+  show('feedScreen');
+  idx = 0; $('cards').innerHTML = ''; renderCard(0, null);
+  if (isTilt) startCalibration(); else startPractice();
+  setTimeout(() => { if (isTilt && !sensorSeen) startSim(); }, 1200);
+};
+
+function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); phase = id === 'setup' ? 'setup' : phase; }
+
+/* ---------- 피드 카드 ---------- */
+let idx = 0;
+const CREATORS = ['dailycook', 'catlog', 'study_with_me', 'seoul_walk', 'tinydance', 'gamehl', 'diy_room', 'pet_tok', 'morning_run', 'k_snack'];
+function cardEl(i) {
+  const d = document.createElement('div'); d.className = 'vcard';
+  const h = (i * 47 + 200) % 360;
+  d.style.background = `linear-gradient(160deg, hsl(${h} 55% 32%), hsl(${(h + 40) % 360} 50% 14%))`;
+  d.innerHTML = `<div class="big">#${i + 1}</div><div class="side"><i></i><i></i><i></i></div>` +
+    `<div class="who">@${CREATORS[i % CREATORS.length]}</div><div class="cap">영상 ${i + 1} · #숏폼 #실험용</div><div class="prog"><b></b></div>`;
+  return d;
+}
+function renderCard(i, dir) {
+  const box = $('cards'), old = box.lastElementChild, el = cardEl(i);
+  if (!old || !dir) { box.innerHTML = ''; box.appendChild(el); return; }
+  el.style.transform = `translateY(${dir === 'next' ? 100 : -100}%)`;
+  box.appendChild(el);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    el.style.transform = 'translateY(0)'; old.style.transform = `translateY(${dir === 'next' ? -100 : 100}%)`;
+  }));
+  setTimeout(() => old.remove(), 320);
+}
+function flash(kind) { const f = $('flash'); f.className = 'flash ' + kind; f.style.opacity = 1; setTimeout(() => f.style.opacity = 0, 180); }
+
+/* ---------- 메시지 ---------- */
+function msg(html) { $('msgInner').innerHTML = html; $('msg').hidden = false; }
+function hideMsg() { $('msg').hidden = true; }
+
+/* ---------- 캘리브레이션 ---------- */
+let calib = null;
+function makeEngine() {
+  const mode = cfg.method === 'thumb' ? 'fixed' : cfg.method;
+  return new TC.TiltEngine({ mode, T: cfg.T, W: cfg.W, stillTime: cfg.stillTime });
+}
+function startCalibration() {
+  phase = 'calib';
+  $('hudLeft').textContent = '준비'; $('hudMid').textContent = NAMES.method[cfg.method];
+  msg(`<div>시청할 때처럼 편하게 폰을 잡고<br><b>3초 동안 가만히</b> 있어 주세요</div><div class="count" id="cnt">3</div>`);
+  engine = makeEngine();
+  calib = { t0: now(), speeds: [], pitches: [] };
+  const timer = setInterval(() => {
+    const left = 3 - Math.floor((now() - calib.t0) / 1000);
+    if ($('cnt')) $('cnt').textContent = Math.max(0, left);
+    if (left <= 0) {
+      clearInterval(timer);
+      const sp = calib.speeds.slice(10);
+      const mean = calib.pitches.reduce((a, b) => a + b, 0) / Math.max(1, calib.pitches.length);
+      const sd = Math.sqrt(calib.pitches.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, calib.pitches.length));
+      calib.stillSpeed = TC.stillSpeedFromCalibration(sp);
+      calib.tremorSd = +sd.toFixed(3);
+      engine = makeEngine();
+      engine.o.stillSpeed = calib.stillSpeed;
+      if (lastR) engine.setReference(lastR);
+      startPractice();
+    }
+  }, 100);
+}
+
+/* ---------- 연습 / 본 실험 공통 ---------- */
+function newRun(kind) {
+  return { kind, t0: now(), wall: new Date().toISOString(), events: [], samples: [], cue: null, nextCueAt: now() + 2500,
+    cueSeq: 0, streak: 0, regripIdx: 0, regripUntil: -1, lastRegripAt: -1e9, lastSample: 0, done: false };
+}
+function startPractice() {
+  phase = 'practice'; hideMsg();
+  run = newRun('practice');
+  $('hudLeft').textContent = '연습';
+  $('gauge').hidden = cfg.method === 'thumb';
+  msg(`<div><b>연습</b><br>위에 뜨는 지시대로 넘겨 보세요.<br>${howTo()}<br><span class="muted">연속 5번 맞히면 본 실험을 시작할 수 있어요</span></div><button class="btn" id="goPractice">연습 시작</button>`);
+  $('goPractice').onclick = () => { hideMsg(); run.t0 = now(); run.nextCueAt = now() + 1500; };
+}
+function howTo() {
+  if (cfg.method === 'thumb') return '엄지로 위로 쓸면 다음, 아래로 쓸면 이전';
+  const push = cfg.mapping === 'pushNext';
+  return `위쪽 끝을 <b>${push ? '바깥으로' : '얼굴 쪽으로'}</b> 탁 기울였다 돌아오면 다음,<br><b>${push ? '얼굴 쪽으로' : '바깥으로'}</b> 탁 하면 이전`;
+}
+function startTrial() {
+  phase = 'trial'; hideMsg();
+  run = newRun('trial');
+  if (engine) { engine.setReference(lastR || simR()); engine.rebaseCount = 0; }
+  $('gauge').hidden = !(cfg.showGauge && cfg.method !== 'thumb');
+  $('hudLeft').textContent = '본 실험';
+  beep(660, 120);
+}
+
+$('abortBtn').onclick = (() => { let armed = false; return () => {
+  if (!armed) { armed = true; $('abortBtn').textContent = '정말 중단?'; setTimeout(() => { armed = false; $('abortBtn').textContent = '중단'; }, 2500); return; }
+  armed = false; $('abortBtn').textContent = '중단'; stopSim(); phase = 'setup'; run = null; hideMsg(); $('cue').hidden = true; $('regrip').hidden = true; show('setup');
+}; })();
+
+/* ---------- 매 프레임 처리 ---------- */
+function tick() {
+  if (phase === 'setup' || phase === 'survey' || phase === 'result') return;
+  const t = now();
+  const R = simOn ? simR() : lastR;
+  let res = null;
+  if (engine && R && cfg.method !== 'thumb') {
+    res = engine.update(t, R);
+    if (phase === 'calib') { calib.speeds.push(engine.speed); calib.pitches.push(res.pitch); return; }
+    drawGauge(res);
+    for (const e of res.events) onEngineEvent(e, t);
+  }
+  if (!run || !$('msg').hidden) return;
+  const rt = t - run.t0;
+
+  // 표본 기록 (약 30Hz)
+  if (res && phase === 'trial' && t - run.lastSample >= 33) {
+    run.lastSample = t;
+    run.samples.push([Math.round(rt), +res.pitch.toFixed(2), +res.roll.toFixed(2), +res.speed.toFixed(1), res.state[0]]);
+  }
+
+  // 고쳐 잡기 지시
+  if (phase === 'trial' && run.regripIdx < cfg.regripAt.length && rt >= cfg.regripAt[run.regripIdx] * 1000) {
+    run.regripIdx++; run.regripUntil = t + 3000; run.lastRegripAt = t;
+    log('regrip_prompt', {});
+    $('regrip').hidden = false; beep(520, 250);
+    if (run.cue) { log('cue_cancel', { cue: run.cue.id }); run.cue = null; $('cue').hidden = true; }
+    run.nextCueAt = t + 5000;
+  }
+  if (run.regripUntil > 0 && t > run.regripUntil) { $('regrip').hidden = true; run.regripUntil = -1; }
+
+  // 넘김 지시
+  if (!run.cue && t >= run.nextCueAt && run.regripUntil < 0) {
+    const dir = (idx > 0 && Math.random() < cfg.prevRatio) ? 'prev' : 'next';
+    run.cue = { id: ++run.cueSeq, dir, t };
+    log('cue', { cue: run.cue.id, dir });
+    const c = $('cue'); c.textContent = dir === 'next' ? '다음 영상으로 ▼' : '이전 영상으로 ▲'; c.className = 'cue' + (dir === 'prev' ? ' prev' : ''); c.hidden = false;
+  }
+  if (run.cue && t - run.cue.t > cfg.cueTimeout) {
+    log('miss', { cue: run.cue.id, dir: run.cue.dir });
+    run.cue = null; $('cue').hidden = true; run.streak = 0; flash('bad');
+    scheduleCue(t);
+  }
+
+  // 시간 표시·종료
+  if (phase === 'trial') {
+    const left = Math.max(0, cfg.duration - rt / 1000);
+    $('hudMid').textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
+    if (left <= 0 && !run.done) { run.done = true; endTrial(); }
+  } else if (phase === 'practice') {
+    $('hudMid').textContent = `연속 ${run.streak}/5`;
+    if (run.streak >= 5 && $('msg').hidden && !run.offered) {
+      run.offered = true;
+      msg(`<div><b>연습 완료</b><br>준비되면 본 실험을 시작하세요 (${cfg.duration}초)</div><button class="btn" id="goTrial">본 실험 시작</button><button class="btn sec" id="morePractice">조금 더 연습</button>`);
+      $('goTrial').onclick = startTrial;
+      $('morePractice').onclick = () => { hideMsg(); run.streak = 0; run.offered = false; };
+    }
+  }
+}
+// 센서가 없을 때(엄지 조건, 시뮬레이터)도 화면 시계는 돌아가야 함
+setInterval(() => { if (cfg && (cfg.method === 'thumb' || simOn)) tick(); }, 16);
+
+function scheduleCue(t) { run.nextCueAt = t + (cfg.gapMin + Math.random() * (cfg.gapMax - cfg.gapMin)) * 1000; }
+function log(type, data) { if (run) run.events.push(Object.assign({ t: Math.round(now() - run.t0), type, idx }, data)); }
+
+function onEngineEvent(e, t) {
+  if (!run || !$('msg').hidden) { return; }
+  if (e.type === 'flip') {
+    const pushIsNext = cfg.mapping === 'pushNext';
+    const dir = (e.sign < 0) === pushIsNext ? 'next' : 'prev';
+    doFlip(dir, 'tilt', { peak: +e.peak.toFixed(1), dur: Math.round(e.dur) });
+  } else if (e.type === 'held') log('held', { sign: e.sign, peak: +e.peak.toFixed(1) });
+  else if (e.type === 'rebase') log('rebase', { pitch: +e.pitch.toFixed(1), roll: +e.roll.toFixed(1), from: e.fromState });
+}
+
+/* ---------- 넘김 처리와 분류 ---------- */
+function doFlip(dir, source, extra = {}) {
+  if (!run || !$('msg').hidden) return;
+  const t = now();
+  let cls;
+  if (run.cue) cls = run.cue.dir === dir ? 'hit' : 'wrong';
+  else cls = 'false';
+  const afterRegrip = t - run.lastRegripAt < 15000;
+  const data = Object.assign({ dir, source, cls, afterRegrip }, extra);
+  if (run.cue) { data.cue = run.cue.id; data.rt = Math.round(t - run.cue.t); }
+  log('flip', data);
+  if (cls === 'hit') { run.streak++; flash('ok'); run.cue = null; $('cue').hidden = true; scheduleCue(t); }
+  else { run.streak = 0; flash('bad'); if (cls === 'wrong') { run.cue = null; $('cue').hidden = true; scheduleCue(t); } }
+  if (dir === 'prev' && idx === 0) { log('boundary', {}); return; }
+  idx += dir === 'next' ? 1 : -1;
+  renderCard(idx, dir);
+}
+
+/* ---------- 엄지 스와이프 ---------- */
+let touch0 = null;
+$('feedScreen').addEventListener('touchstart', e => { if (e.target.closest('button,input,.center-msg,.sim')) return; const p = e.touches[0]; touch0 = { x: p.clientX, y: p.clientY, t: now() }; }, { passive: true });
+$('feedScreen').addEventListener('touchend', e => {
+  if (!touch0) return; const p = e.changedTouches[0];
+  const dx = p.clientX - touch0.x, dy = p.clientY - touch0.y, dt = now() - touch0.t; touch0 = null;
+  if (Math.abs(dy) < 50 || Math.abs(dy) < Math.abs(dx) * 1.2 || dt > 800) return;
+  const dir = dy < 0 ? 'next' : 'prev';
+  if (cfg.method === 'thumb') doFlip(dir, 'swipe', { dy: Math.round(dy), dt: Math.round(dt) });
+  else log('swipe_ignored', { dir });
+}, { passive: true });
+// 컴퓨터에서 엄지 조건 시험: 마우스 휠/방향키
+window.addEventListener('keydown', e => {
+  if (phase === 'setup' || !cfg || cfg.method !== 'thumb') return;
+  if (e.key === 'ArrowDown') doFlip('next', 'key'); if (e.key === 'ArrowUp') doFlip('prev', 'key');
+});
+
+/* ---------- 기울기 막대 ---------- */
+function drawGauge(res) {
+  if ($('gauge').hidden) return;
+  const span = 45, pct = v => 50 + Math.max(-span, Math.min(span, v)) / span * 50;
+  $('gN').style.left = pct(res.pitch) + '%';
+  $('gT1').style.left = pct(-cfg.T) + '%'; $('gT2').style.left = pct(cfg.T) + '%';
+  $('gZone').style.left = pct(-engine.o.Tret) + '%'; $('gZone').style.width = (pct(engine.o.Tret) - pct(-engine.o.Tret)) + '%';
+  $('gLab1').textContent = `앞뒤 ${res.pitch.toFixed(0)}° · 옆 ${res.roll.toFixed(0)}°`;
+  $('gLab2').textContent = `${res.state === 'armed' ? '대기' : res.state === 'cand' ? '기울임' : '머묾'} · 기준 다시잡기 ${engine.rebaseCount}`;
+}
+
+/* ---------- 종료와 요약 ---------- */
+function summarize(r) {
+  const ev = r.events, flips = ev.filter(e => e.type === 'flip');
+  const hits = flips.filter(e => e.cls === 'hit'), rts = hits.map(e => e.rt).sort((a, b) => a - b);
+  return {
+    cues: ev.filter(e => e.type === 'cue').length, hits: hits.length,
+    misses: ev.filter(e => e.type === 'miss').length, wrong: flips.filter(e => e.cls === 'wrong').length,
+    falseFlips: flips.filter(e => e.cls === 'false').length,
+    falseFlipsAfterRegrip: flips.filter(e => e.cls === 'false' && e.afterRegrip).length,
+    held: ev.filter(e => e.type === 'held').length, rebases: ev.filter(e => e.type === 'rebase').length,
+    rtMean: rts.length ? Math.round(rts.reduce((a, b) => a + b, 0) / rts.length) : '',
+    rtMedian: rts.length ? rts[Math.floor(rts.length / 2)] : '',
+  };
+}
+let current = null;
+function endTrial() {
+  beep(440, 300);
+  $('cue').hidden = true; $('regrip').hidden = true; stopSim();
+  const id = `P${cfg.pid}_${cfg.posture}_${cfg.method}_${Date.now().toString(36)}`;
+  current = {
+    id, meta: { pid: cfg.pid, hand: cfg.hand, posture: cfg.posture, method: cfg.method, mapping: cfg.mapping, start: run.wall, duration: cfg.duration,
+      params: { T: cfg.T, W: cfg.W, stillTime: cfg.stillTime, regripAt: cfg.regripAt, gap: [cfg.gapMin, cfg.gapMax] },
+      calib: calib && cfg.method !== 'thumb' ? { stillSpeed: +calib.stillSpeed.toFixed(2), tremorSd: calib.tremorSd } : null,
+      sim: simOn, ua: navigator.userAgent },
+    summary: summarize(run), events: run.events,
+    samplesHeader: ['t_ms', 'pitch', 'roll', 'speed', 'state'], samples: run.samples,
+  };
+  phase = 'survey'; run = null; buildSurvey(); show('survey');
+}
+
+/* ---------- 설문 ---------- */
+const TLX = [['mental', '정신적 요구', '낮음', '높음'], ['physical', '신체적 요구', '낮음', '높음'], ['temporal', '시간적 압박', '낮음', '높음'],
+             ['performance', '수행 (잘 해냈나)', '완벽', '실패'], ['effort', '노력', '적음', '많음'], ['frustration', '좌절감', '낮음', '높음']];
+function buildSurvey() {
+  $('svCond').textContent = `P${cfg.pid} · ${NAMES.posture[cfg.posture]} · ${NAMES.method[cfg.method]}`;
+  $('tlxBox').innerHTML = '<h2>작업 부담 (NASA-TLX, 0–100)</h2>' + TLX.map(([k, n, a, b]) =>
+    `<div class="tlx"><label for="tlx-${k}">${n}: <output id="o-${k}">50</output></label><input type="range" id="tlx-${k}" min="0" max="100" step="5" value="50"><div class="ends"><span>${a}</span><span>${b}</span></div></div>`).join('');
+  TLX.forEach(([k]) => { $('tlx-' + k).oninput = e => $('o-' + k).textContent = e.target.value; });
+  $('likert').innerHTML = [1,2,3,4,5,6,7].map(n => `<input type="radio" name="feel" id="feel${n}" value="${n}"><label for="feel${n}">${n}</label>`).join('');
+  $('memo').value = '';
+}
+$('svSave').onclick = () => {
+  const s = {}; TLX.forEach(([k]) => s[k] = +$('tlx-' + k).value);
+  s.raw = +(TLX.reduce((a, [k]) => a + s[k], 0) / 6).toFixed(1);
+  const f = document.querySelector('input[name=feel]:checked'); s.feel = f ? +f.value : '';
+  s.memo = $('memo').value;
+  current.survey = s;
+  const list = store.get('tf.sessions', []);
+  list.push({ id: current.id, meta: current.meta, summary: current.summary, survey: s });
+  store.set('tf.sessions', list);
+  if (!store.set('tf.raw.' + current.id, current)) { const lite = Object.assign({}, current, { samples: [] }); store.set('tf.raw.' + current.id, lite); }
+  renderHist(); showResult();
+};
+
+/* ---------- 결과 ---------- */
+function showResult() {
+  const u = current.summary;
+  $('rsCond').textContent = `P${current.meta.pid} · ${NAMES.posture[current.meta.posture]} · ${NAMES.method[current.meta.method]}${current.meta.sim ? ' · 시뮬레이터' : ''}`;
+  const rows = [['지시 수', u.cues], ['정확히 넘김', u.hits], ['놓침', u.misses], ['잘못 넘김', u.wrong], ['오작동', u.falseFlips],
+    ['└ 고쳐 잡은 뒤 15초 안', u.falseFlipsAfterRegrip], ['기울인 채 머묾', u.held], ['기준 다시 잡기', u.rebases],
+    ['반응 시간 평균', u.rtMean ? u.rtMean + ' ms' : '–'], ['반응 시간 중앙값', u.rtMedian ? u.rtMedian + ' ms' : '–'],
+    ['NASA-TLX 평균', current.survey.raw], ['조작감 (1–7)', current.survey.feel || '–']];
+  $('rsKv').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  phase = 'result'; show('result');
+}
+$('rsSave').onclick = () => saveFile(`${current.id}.json`, JSON.stringify(current), 'application/json');
+$('rsCopy').onclick = async () => {
+  const text = CSV_HEAD.join(',') + '\n' + csvRow(current);
+  try { await navigator.clipboard.writeText(text); $('rsCopy').textContent = '복사됨'; } catch { $('rsCopy').textContent = '복사 실패: 결과 파일 저장을 쓰세요'; }
+  setTimeout(() => $('rsCopy').textContent = '요약 복사', 2000);
+};
+$('rsNext').onclick = () => { show('setup'); };
+
+/* ---------- 시뮬레이터 (컴퓨터에서 시험할 때) ---------- */
+let shakeTimer = null;
+function startSim() {
+  simOn = true; $('sim').hidden = false;
+  sim.p = 0; sim.r = 0; sim.extra = 0; $('simP').value = 0; $('simR').value = 0; $('simPv').textContent = 0; $('simRv').textContent = 0; $('sensorNote').textContent = '센서가 없어 시뮬레이터로 동작 중입니다.';
+  if (phase === 'calib') { /* 계산은 loop에서 */ }
+}
+function stopSim() { if (shakeTimer) clearInterval(shakeTimer); shakeTimer = null; }
+$('simP').oninput = e => { sim.p = +e.target.value; $('simPv').textContent = sim.p; };
+$('simR').oninput = e => { sim.r = +e.target.value; $('simRv').textContent = sim.r; };
+// 탁 동작은 지금 각도에서 출발해 지금 각도로 돌아온다 (고쳐 잡은 각도 유지)
+function animateP(seq) { const base = sim.p; let i = 0; const id = setInterval(() => { sim.p = base + seq[i++]; if (i >= seq.length) { sim.p = base; clearInterval(id); } }, 16); }
+const FLICK = [0, -5, -12, -20, -26, -28, -24, -16, -8, -2, 0];
+$('simPush').onclick = () => animateP(FLICK.map(v => v));
+$('simPull').onclick = () => animateP(FLICK.map(v => -v));
+$('simShake').onclick = () => { stopSim(); let n = 0; shakeTimer = setInterval(() => { sim.extra = (Math.random() - 0.5) * 6; if (++n > 90) { sim.extra = 0; stopSim(); } }, 33); };
+$('simRegrip').onclick = () => { sim.p += 10; $('simP').value = sim.p; $('simPv').textContent = sim.p; };
+if (SIM_FORCED) $('sensorNote').textContent = '시뮬레이터 모드입니다(주소에 ?sim). 실제 실험은 ?sim 없이 여세요.';
+</script>
+</body>
+</html>
