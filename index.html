@@ -165,7 +165,9 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     <div class="card">
       <h2>저장된 기록</h2>
       <div class="hist" id="hist"><p class="muted">아직 없습니다.</p></div>
-      <button class="btn sec" id="exportAll">전체 요약 CSV 저장</button>
+      <button class="btn sec" id="exportAll">전체 요약 CSV 저장 (조건마다 한 줄, 메모 포함)</button>
+      <button class="btn sec" id="exportRawAll">전체 원자료 CSV 저장 (넘김 기록 · 기울기 값)</button>
+      <p class="muted" id="exportNote">CSV는 엑셀에서 바로 열립니다. 기록은 이 폰의 Safari에만 있으니 자주 저장하세요.</p>
       <button class="btn danger" id="clearAll">기록 모두 지우기</button>
     </div>
   </div>
@@ -220,7 +222,8 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     <div><p class="muted" id="rsCond"></p><h1>조건 결과</h1></div>
     <div class="card"><dl class="kv" id="rsKv"></dl></div>
     <p class="muted">오작동 = 지시가 없을 때 넘어감 · 잘못 넘김 = 지시와 반대로 넘어감 · 놓침 = 5초 안에 못 넘김</p>
-    <button class="btn" id="rsSave">이 조건 원자료 저장 (JSON)</button>
+    <button class="btn" id="rsCsv">이 조건 CSV 저장 (요약 · 넘김 기록 · 기울기 값)</button>
+    <button class="btn sec" id="rsSave">백업용 JSON 저장</button>
     <button class="btn sec" id="rsCopy">요약 복사</button>
     <button class="btn sec" id="rsNext">다음 조건으로</button>
   </div>
@@ -267,25 +270,61 @@ function renderHist() {
 renderHist();
 
 /* ---------- 파일 저장 ---------- */
-async function saveFile(name, text, mime) {
-  const blob = new Blob([text], { type: mime });
+// 파일 여러 개를 한 번에: 아이폰은 공유 창 하나로, 안 되면 하나씩 내려받기
+async function saveFiles(items) {
+  const files = items.map(({ name, text, mime }) => new File([new Blob([text], { type: mime })], name, { type: mime }));
   try {
-    const file = new File([blob], name, { type: mime });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; }
+    if (navigator.canShare && navigator.canShare({ files })) { await navigator.share({ files, title: files.length > 1 ? `${files.length}개 파일` : files[0].name }); return; }
   } catch (e) { if (e && e.name === 'AbortError') return; }
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
-  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  files.forEach((f, i) => setTimeout(() => {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }, i * 400));
 }
-const CSV_HEAD = ['id','pid','hand','posture','method','mapping','start','duration_s','cues','hits','misses','wrong','falseFlips','falseFlips_afterRegrip','held','rebases','rt_mean_ms','rt_median_ms','tlx_mental','tlx_physical','tlx_temporal','tlx_performance','tlx_effort','tlx_frustration','tlx_raw','feel_1to7','stillSpeed','tremor_sd','sensor','sensor_hz'];
-function csvRow(s) {
+const saveFile = (name, text, mime) => saveFiles([{ name, text, mime }]);
+
+/* ---------- CSV (엑셀용) ---------- */
+// 쉼표·따옴표·줄바꿈이 든 칸(메모 등)은 따옴표로 감싸고 안의 따옴표는 두 번 씀. 맨 앞 BOM은 엑셀에서 한글이 안 깨지게 함
+const cell = x => { if (x === undefined || x === null) return ''; const s = String(x); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+const toCsv = (head, rows) => '﻿' + [head, ...rows].map(r => r.map(cell).join(',')).join('\r\n');
+const today = () => new Date().toISOString().slice(0, 10);
+
+const CSV_HEAD = ['id','pid','hand','posture','method','mapping','start','duration_s','cues','hits','misses','wrong','falseFlips','falseFlips_afterRegrip','held','rebases','rt_mean_ms','rt_median_ms','tlx_mental','tlx_physical','tlx_temporal','tlx_performance','tlx_effort','tlx_frustration','tlx_raw','feel_1to7','stillSpeed','tremor_sd','sensor','sensor_hz','memo'];
+function summaryVals(s) {
   const m = s.meta, u = s.summary, v = s.survey || {};
-  const vals = [s.id, m.pid, m.hand, m.posture, m.method, m.mapping, m.start, m.duration, u.cues, u.hits, u.misses, u.wrong, u.falseFlips, u.falseFlipsAfterRegrip, u.held, u.rebases, u.rtMean, u.rtMedian,
-    v.mental, v.physical, v.temporal, v.performance, v.effort, v.frustration, v.raw, v.feel, m.calib ? m.calib.stillSpeed : '', m.calib ? m.calib.tremorSd : '', m.sensor || (m.sim ? 'simulated' : ''), m.sensorHz];
-  return vals.map(x => x === undefined || x === null ? '' : String(x).includes(',') ? `"${x}"` : x).join(',');
+  return [s.id, m.pid, m.hand, m.posture, m.method, m.mapping, m.start, m.duration, u.cues, u.hits, u.misses, u.wrong, u.falseFlips, u.falseFlipsAfterRegrip, u.held, u.rebases, u.rtMean, u.rtMedian,
+    v.mental, v.physical, v.temporal, v.performance, v.effort, v.frustration, v.raw, v.feel, m.calib ? m.calib.stillSpeed : '', m.calib ? m.calib.tremorSd : '', m.sensor || (m.sim ? 'simulated' : ''), m.sensorHz, v.memo];
 }
+const csvRow = s => summaryVals(s).map(cell).join(',');
+
+// 넘김 기록: 지시·넘김·놓침·고쳐 잡기 같은 사건이 한 줄씩
+const EVENT_HEAD = ['id','pid','posture','method','t_ms','type','card_idx','cue','dir','source','cls','afterRegrip','rt_ms','peak_deg','dur_ms','sign','pitch','roll','from','dy_px','dt_ms'];
+const eventRows = s => (s.events || []).map(e => [s.id, s.meta.pid, s.meta.posture, s.meta.method, e.t, e.type, e.idx, e.cue, e.dir, e.source, e.cls,
+  e.afterRegrip === undefined ? '' : e.afterRegrip ? 1 : 0, e.rt, e.peak, e.dur, e.sign, e.pitch, e.roll, e.from, e.dy, e.dt]);
+// 기울기 원자료: 초당 약 30줄
+const STATE = { a: 'armed', c: 'cand', h: 'held' };
+const SAMPLE_HEAD = ['id','pid','posture','method','t_ms','pitch_deg','roll_deg','speed_dps','state'];
+const sampleRows = s => (s.samples || []).map(r => [s.id, s.meta.pid, s.meta.posture, s.meta.method, r[0], r[1], r[2], r[3], STATE[r[4]] || r[4]]);
+
+function rawFiles(list, tag) {
+  const out = [{ name: `tiltflick_events_${tag}.csv`, text: toCsv(EVENT_HEAD, list.flatMap(eventRows)), mime: 'text/csv' }];
+  const samples = list.flatMap(sampleRows);
+  if (samples.length) out.push({ name: `tiltflick_samples_${tag}.csv`, text: toCsv(SAMPLE_HEAD, samples), mime: 'text/csv' });
+  return out;
+}
+
 $('exportAll').onclick = () => {
   const list = store.get('tf.sessions', []);
-  saveFile(`tiltflick_summary_${new Date().toISOString().slice(0,10)}.csv`, '﻿' + [CSV_HEAD.join(','), ...list.map(csvRow)].join('\n'), 'text/csv');
+  if (!list.length) { $('exportNote').textContent = '저장된 기록이 아직 없습니다.'; return; }
+  saveFile(`tiltflick_summary_${today()}.csv`, toCsv(CSV_HEAD, list.map(summaryVals)), 'text/csv');
+};
+$('exportRawAll').onclick = () => {
+  const list = store.get('tf.sessions', []);
+  if (!list.length) { $('exportNote').textContent = '저장된 기록이 아직 없습니다.'; return; }
+  const raws = list.map(s => store.get('tf.raw.' + s.id, null)).filter(Boolean);
+  const noSamples = raws.filter(r => !(r.samples && r.samples.length) && r.meta.method !== 'thumb').length;
+  $('exportNote').textContent = `${raws.length}개 조건을 저장합니다.` + (noSamples ? ` 그중 ${noSamples}개는 폰 저장 공간이 모자라 기울기 값 없이 넘김 기록만 남아 있습니다.` : '');
+  saveFiles(rawFiles(raws, today()));
 };
 let clearArmed = false;
 $('clearAll').onclick = () => {
@@ -660,6 +699,7 @@ function showResult() {
   phase = 'result'; show('result');
 }
 $('rsSave').onclick = () => saveFile(`${current.id}.json`, JSON.stringify(current), 'application/json');
+$('rsCsv').onclick = () => saveFiles([{ name: `tiltflick_summary_${current.id}.csv`, text: toCsv(CSV_HEAD, [summaryVals(current)]), mime: 'text/csv' }, ...rawFiles([current], current.id)]);
 $('rsCopy').onclick = async () => {
   const text = CSV_HEAD.join(',') + '\n' + csvRow(current);
   try { await navigator.clipboard.writeText(text); $('rsCopy').textContent = '복사됨'; } catch { $('rsCopy').textContent = '복사 실패: 결과 파일 저장을 쓰세요'; }
