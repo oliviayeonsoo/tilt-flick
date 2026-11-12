@@ -45,7 +45,16 @@ textarea { min-height: 70px; resize: vertical; }
 .btn.danger { background: transparent; color: var(--bad); border: 1px solid var(--bad); }
 .btn:disabled { opacity: .45; }
 .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.order { font-family: var(--mono); font-size: 13px; background: var(--bg); border-radius: 10px; padding: 10px 12px; line-height: 1.7; }
+.plan { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; counter-reset: st; }
+.plan li { counter-increment: st; display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--bg); font-size: 14px; }
+.plan li::before { content: counter(st); width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; border: 1px solid var(--line); }
+.plan li.ok { color: var(--muted); } .plan li.ok::before { content: '✓'; background: var(--good); border-color: var(--good); color: #fff; }
+.plan li.next { outline: 2px solid var(--accent); } .plan li .tag { font-size: 12px; color: var(--muted); }
+.plan li.block { margin-top: 6px; }
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.dtab { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.dtab th, .dtab td { padding: 6px 4px; border-bottom: 1px solid var(--line); text-align: right; }
+.dtab th:first-child, .dtab td:first-child { text-align: left; }
 details summary { cursor: pointer; font-weight: 600; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 14px; font-variant-numeric: tabular-nums; }
 .kv dt { color: var(--muted); } .kv dd { margin: 0; text-align: right; font-weight: 600; }
@@ -112,13 +121,21 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     </div>
 
     <div class="card">
-      <h2>참가자와 조건</h2>
+      <h2>참가자</h2>
       <div class="row">
         <label class="f">참가자 번호 <input id="pid" type="number" inputmode="numeric" min="1" value="1"></label>
         <label class="f">잡는 손
           <select id="hand"><option value="R">오른손</option><option value="L">왼손</option></select>
         </label>
       </div>
+      <p class="muted">번호를 넣으면 이 참가자가 할 6개 조건과 순서가 정해집니다. 앱이 하나씩 안내하니 실험자가 조건을 고를 필요가 없습니다.</p>
+      <ol class="plan" id="planBox" aria-live="polite"></ol>
+      <button class="btn" id="partStart">실험 시작</button>
+    </div>
+
+    <details class="card">
+      <summary>예비 시험 (조건 하나만)</summary>
+      <p class="muted">숫자를 정하거나 기존 앱의 문제를 재현해 볼 때만 씁니다. 여기서 한 기록은 참가자 진행에 들어가지 않고 '예비'로 표시됩니다.</p>
       <div class="f" style="display:grid;gap:4px"><span class="muted">자세</span>
         <div class="seg" role="radiogroup" aria-label="자세">
           <input type="radio" name="posture" id="po-sit" value="sit" checked><label for="po-sit">앉음</label>
@@ -128,13 +145,15 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
       </div>
       <div class="f" style="display:grid;gap:4px"><span class="muted">넘기는 방식</span>
         <div class="seg" role="radiogroup" aria-label="방식">
-          <input type="radio" name="method" id="me-thumb" value="thumb" checked><label for="me-thumb">엄지 스와이프</label>
-          <input type="radio" name="method" id="me-fixed" value="fixed"><label for="me-fixed">고정 기울기</label>
-          <input type="radio" name="method" id="me-adapt" value="adaptive"><label for="me-adapt">적응 기울기</label>
+          <input type="radio" name="method" id="me-thumb" value="thumb" checked><label for="me-thumb">엄지</label>
+          <input type="radio" name="method" id="me-fixed" value="fixed"><label for="me-fixed">고정</label>
+          <input type="radio" name="method" id="me-adapt" value="adaptive"><label for="me-adapt">적응</label>
+          <input type="radio" name="method" id="me-grav" value="gravity"><label for="me-grav">기존 앱식</label>
         </div>
+        <span class="muted">기존 앱식 = Tilt 2 Scroll처럼 중력만 쓰고 기준을 다시 잡지 않는 방식</span>
       </div>
-      <div class="order" id="orderBox" aria-live="polite"></div>
-    </div>
+      <button class="btn sec" id="pilotStart">이 조건만 시험</button>
+    </details>
 
     <details class="card">
       <summary>실험 세부 설정</summary>
@@ -155,14 +174,11 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
         <label class="f">적응: 가만히(ms) <input id="pStill" type="number" value="1000" step="100"></label>
         <label class="f">지시 간격(초) <input id="pGap" type="text" value="4-8"></label>
       </div>
-      <label class="f">추가 방식(예비 시험용)
-        <select id="extraMode"><option value="">없음</option><option value="gravity">기존 앱식(중력만, 기준 고정)</option></select>
-      </label>
       <label class="f" style="grid-template-columns:auto 1fr;align-items:center;gap:8px"><input id="showGauge" type="checkbox"> 본 실험 중에도 기울기 막대 보이기</label>
+      <p class="muted">본 실험 중에는 바꾸지 마세요. 예비 시험에서 숫자를 정할 때만 씁니다.</p>
     </details>
 
-    <button class="btn" id="startBtn">센서 켜고 시작</button>
-    <p class="muted" id="sensorNote">아이폰은 '동작 및 방향' 접근을 허용해야 합니다. 화면 세로 고정을 켜 주세요.</p>
+    <p class="muted" id="sensorNote">아이폰 Safari에서 여세요. 화면 세로 고정을 켜 주세요.</p>
 
     <div class="card">
       <h2>저장된 기록</h2>
@@ -172,6 +188,41 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
       <p class="muted" id="exportNote">CSV는 엑셀에서 바로 열립니다. 기록은 이 폰의 Safari에만 있으니 자주 저장하세요.</p>
       <button class="btn danger" id="clearAll">기록 모두 지우기</button>
     </div>
+  </div>
+</section>
+
+<!-- ================= 1-1. 조건 안내 (조건마다, 시작 전) ================= -->
+<section class="screen" id="intro">
+  <div class="wrap">
+    <div><p class="muted" id="inStep"></p><h1 id="inTitle"></h1></div>
+    <div class="note" id="inChange" hidden></div>
+    <div class="card">
+      <h2>자세</h2>
+      <p id="inPosture"></p>
+    </div>
+    <div class="card">
+      <h2>넘기는 법</h2>
+      <p id="inMethod"></p>
+    </div>
+    <div class="card">
+      <h2>이렇게 진행돼요</h2>
+      <ol class="steps" id="inSteps"></ol>
+    </div>
+    <button class="btn" id="introGo">자세 잡았어요 · 시작</button>
+    <p class="muted" id="introNote"></p>
+    <button class="btn sec" id="introHome">처음 화면으로 (진행은 저장돼 있어요)</button>
+  </div>
+</section>
+
+<!-- ================= 1-2. 참가자 완료 ================= -->
+<section class="screen" id="done">
+  <div class="wrap">
+    <div><p class="muted" id="dnWho"></p><h1>6개 조건을 모두 마쳤어요</h1></div>
+    <div class="card"><table class="dtab" id="dnTable"></table></div>
+    <button class="btn" id="dnCsv">이 참가자 파일 저장 (CSV 3개)</button>
+    <button class="btn sec" id="dnJson">백업용 JSON 저장</button>
+    <p class="muted" id="dnNote">저장 버튼을 누르면 공유 창이 뜹니다. '파일에 저장'이나 AirDrop으로 옮기세요.</p>
+    <button class="btn sec" id="dnHome">처음 화면으로 (다음 참가자)</button>
   </div>
 </section>
 
@@ -224,10 +275,11 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     <div><p class="muted" id="rsCond"></p><h1>조건 결과</h1></div>
     <div class="card"><dl class="kv" id="rsKv"></dl></div>
     <p class="muted">오작동 = 지시가 없을 때 넘어감 · 잘못 넘김 = 지시와 반대로 넘어감 · 놓침 = 5초 안에 못 넘김</p>
-    <button class="btn" id="rsCsv">이 조건 CSV 저장 (요약 · 넘김 기록 · 기울기 값)</button>
-    <button class="btn sec" id="rsSave">백업용 JSON 저장</button>
+    <button class="btn" id="rsNext">다음 조건으로</button>
+    <p class="muted">이 조건 기록은 폰에 저장됐습니다. 참가자가 끝나면 한 번에 파일로 내보낼 수 있어요.</p>
+    <button class="btn sec" id="rsCsv">이 조건만 CSV 저장</button>
+    <button class="btn sec" id="rsSave">이 조건만 백업 JSON 저장</button>
     <button class="btn sec" id="rsCopy">요약 복사</button>
-    <button class="btn sec" id="rsNext">다음 조건으로</button>
   </div>
 </section>
 
@@ -237,6 +289,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 const $ = id => document.getElementById(id);
 const TC = window.TiltCore;
 const now = () => performance.now();
+const SIM_FORCED = new URLSearchParams(location.search).has('sim');
 
 /* ---------- 조건 이름 ---------- */
 const NAMES = {
@@ -248,14 +301,14 @@ const radio = name => document.querySelector(`input[name=${name}]:checked`).valu
 /* ---------- 참가자별 추천 순서 (자세 블록 교차 + 방식 Williams 순서) ---------- */
 const SEQ3 = [['thumb','fixed','adaptive'],['fixed','adaptive','thumb'],['adaptive','thumb','fixed'],
               ['adaptive','fixed','thumb'],['thumb','adaptive','fixed'],['fixed','thumb','adaptive']];
-function renderOrder() {
-  const p = Math.max(1, parseInt($('pid').value || '1', 10));
+// 참가자 번호 → 6개 조건 순서. 홀수 번호는 앉음 먼저, 짝수 번호는 누움 먼저. 방식 순서는 Williams 6가지를 번갈아 씀
+function planFor(p) {
+  p = Math.max(1, p);
   const postures = p % 2 === 1 ? ['sit', 'supine'] : ['supine', 'sit'];
-  const s1 = SEQ3[(p - 1) % 6], s2 = SEQ3[p % 6];
-  $('orderBox').innerHTML = `P${p} 추천 순서<br>1블록 ${NAMES.posture[postures[0]]}: ${s1.map(m => NAMES.method[m]).join(' → ')}<br>` +
-    `2블록 ${NAMES.posture[postures[1]]}: ${s2.map(m => NAMES.method[m]).join(' → ')}`;
+  const seqs = [SEQ3[(p - 1) % 6], SEQ3[p % 6]];
+  return postures.flatMap((po, b) => seqs[b].map(m => ({ posture: po, method: m })));
 }
-$('pid').addEventListener('input', renderOrder); renderOrder();
+const readPid = () => Math.max(1, parseInt($('pid').value || '1', 10) || 1);
 
 /* ---------- 저장소 ---------- */
 const store = {
@@ -266,10 +319,26 @@ const store = {
 function renderHist() {
   const list = store.get('tf.sessions', []);
   $('hist').innerHTML = list.length ? list.slice().reverse().map(s =>
-    `<div><span>P${s.meta.pid} · ${NAMES.posture[s.meta.posture]} · ${NAMES.method[s.meta.method]}</span>` +
+    `<div><span>${s.meta.mode === 'pilot' ? '예비 · ' : ''}P${s.meta.pid} · ${NAMES.posture[s.meta.posture]} · ${NAMES.method[s.meta.method]}</span>` +
     `<span>오작동 ${s.summary.falseFlips} · 놓침 ${s.summary.misses}</span></div>`).join('') : '<p class="muted">아직 없습니다.</p>';
 }
 renderHist();
+
+/* ---------- 참가자 진행 상황 (폰에 저장된 기록에서 계산 → 중간에 끊겨도 이어서 함) ---------- */
+// 실제 실험에서는 가상 센서로 한 기록을 '완료'로 치지 않음
+const partSessions = pid => store.get('tf.sessions', []).filter(s => s.meta.mode === 'participant' && s.meta.pid === pid && (SIM_FORCED || s.meta.sensor !== 'simulated'));
+const sameCond = (s, c) => s.meta.posture === c.posture && s.meta.method === c.method;
+function nextStep(pid) { const list = partSessions(pid); return planFor(pid).findIndex(c => !list.some(s => sameCond(s, c))); }
+function renderPlan() {
+  const pid = readPid(), plan = planFor(pid), list = partSessions(pid), nx = nextStep(pid);
+  $('planBox').innerHTML = plan.map((c, i) => {
+    const ok = list.some(s => sameCond(s, c));
+    const cls = [ok ? 'ok' : '', i === nx ? 'next' : '', i === 3 ? 'block' : ''].join(' ');
+    return `<li class="${cls}"><span>${NAMES.posture[c.posture]} · ${NAMES.method[c.method]}</span><span class="tag">${ok ? '완료' : i === nx ? '다음' : ''}</span></li>`;
+  }).join('');
+  $('partStart').textContent = nx < 0 ? `P${pid} 완료 · 파일 저장 화면 열기` : nx === 0 ? `P${pid} 실험 시작` : `P${pid} 이어서 하기 (${nx + 1}/6부터)`;
+}
+$('pid').addEventListener('input', renderPlan); renderPlan();
 
 /* ---------- 파일 저장 ---------- */
 // 파일 여러 개를 한 번에: 아이폰은 공유 창 하나로, 안 되면 하나씩 내려받기
@@ -289,12 +358,13 @@ const saveFile = (name, text, mime) => saveFiles([{ name, text, mime }]);
 // 쉼표·따옴표·줄바꿈이 든 칸(메모 등)은 따옴표로 감싸고 안의 따옴표는 두 번 씀. 맨 앞 BOM은 엑셀에서 한글이 안 깨지게 함
 const cell = x => { if (x === undefined || x === null) return ''; const s = String(x); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
 const toCsv = (head, rows) => '﻿' + [head, ...rows].map(r => r.map(cell).join(',')).join('\r\n');
-const today = () => new Date().toISOString().slice(0, 10);
+// 폰의 현지 날짜 (toISOString은 세계 표준시라 한국 오전엔 어제 날짜가 됨)
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
-const CSV_HEAD = ['id','pid','hand','posture','method','mapping','start','duration_s','cues','hits','misses','wrong','falseFlips','falseFlips_afterRegrip','held','rebases','rt_mean_ms','rt_median_ms','tlx_mental','tlx_physical','tlx_temporal','tlx_performance','tlx_effort','tlx_frustration','tlx_raw','feel_1to7','stillSpeed','tremor_sd','sensor','sensor_hz','memo'];
+const CSV_HEAD = ['id','pid','hand','mode','step','posture','method','mapping','start','duration_s','cues','hits','misses','wrong','falseFlips','falseFlips_afterRegrip','held','rebases','rt_mean_ms','rt_median_ms','tlx_mental','tlx_physical','tlx_temporal','tlx_performance','tlx_effort','tlx_frustration','tlx_raw','feel_1to7','stillSpeed','tremor_sd','sensor','sensor_hz','memo'];
 function summaryVals(s) {
   const m = s.meta, u = s.summary, v = s.survey || {};
-  return [s.id, m.pid, m.hand, m.posture, m.method, m.mapping, m.start, m.duration, u.cues, u.hits, u.misses, u.wrong, u.falseFlips, u.falseFlipsAfterRegrip, u.held, u.rebases, u.rtMean, u.rtMedian,
+  return [s.id, m.pid, m.hand, m.mode || '', m.step || '', m.posture, m.method, m.mapping, m.start, m.duration, u.cues, u.hits, u.misses, u.wrong, u.falseFlips, u.falseFlipsAfterRegrip, u.held, u.rebases, u.rtMean, u.rtMedian,
     v.mental, v.physical, v.temporal, v.performance, v.effort, v.frustration, v.raw, v.feel, m.calib ? m.calib.stillSpeed : '', m.calib ? m.calib.tremorSd : '', m.sensor || (m.sim ? 'simulated' : ''), m.sensorHz, v.memo];
 }
 const csvRow = s => summaryVals(s).map(cell).join(',');
@@ -332,7 +402,7 @@ let clearArmed = false;
 $('clearAll').onclick = () => {
   if (!clearArmed) { clearArmed = true; $('clearAll').textContent = '한 번 더 누르면 모두 지워집니다'; setTimeout(() => { clearArmed = false; $('clearAll').textContent = '기록 모두 지우기'; }, 3000); return; }
   for (const s of store.get('tf.sessions', [])) store.del('tf.raw.' + s.id);
-  store.set('tf.sessions', []); clearArmed = false; $('clearAll').textContent = '기록 모두 지우기'; renderHist();
+  store.set('tf.sessions', []); clearArmed = false; $('clearAll').textContent = '기록 모두 지우기'; renderHist(); renderPlan();
 };
 
 /* ---------- 소리 ---------- */
@@ -344,7 +414,6 @@ function beep(freq = 880, ms = 160) {
 
 /* ---------- 센서 ---------- */
 let lastR = null, sensorSeen = false, simOn = false;
-const SIM_FORCED = new URLSearchParams(location.search).has('sim');
 // 1초마다 실제로 들어온 센서 값 개수를 화면 위에 표시 (실험자가 진짜 센서인지 바로 확인)
 let sensorCount = 0;
 setInterval(() => {
@@ -382,12 +451,14 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 /* ---------- 실행 상태 ---------- */
 let cfg = null, phase = 'setup', engine = null, run = null;
 
-function readCfg() {
-  const extra = $('extraMode').value;
+let part = null;     // 참가자 진행 중이면 { pid, hand, plan }, 예비 시험이면 null
+let pending = null;  // 안내 화면에 띄운 조건 { posture, method, step }
+
+function readCfg(c) {
   const gap = $('pGap').value.split('-').map(Number);
   return {
-    pid: parseInt($('pid').value || '1', 10), hand: $('hand').value, posture: radio('posture'),
-    method: extra || radio('method'), mapping: radio('mapping'),
+    pid: part ? part.pid : readPid(), hand: part ? part.hand : $('hand').value, posture: c.posture,
+    method: c.method, mapping: radio('mapping'), mode: part ? 'participant' : 'pilot', step: part ? c.step + 1 : null,
     duration: Math.max(30, parseInt($('duration').value, 10) || 180),
     regripAt: $('regripAt').value.split(',').map(s => parseFloat(s)).filter(x => x > 0),
     T: parseFloat($('pT').value) || 15, W: parseFloat($('pW').value) || 500, stillTime: parseFloat($('pStill').value) || 1000,
@@ -396,27 +467,94 @@ function readCfg() {
   };
 }
 
-$('startBtn').onclick = async () => {
-  cfg = readCfg();
+/* ---------- 참가자 진행: 처음 화면 → 조건 안내 → (준비·연습·본 실험·설문·결과) → 다음 조건 안내 … → 완료 ---------- */
+const POSTURE_HOW = {
+  sit: '의자에 등을 기대고 앉아, 평소처럼 폰을 가슴 앞에 들고 봅니다.',
+  supine: '침대나 매트에 등을 대고 누워, 폰을 얼굴 위로 들고 봅니다. 베개는 평소처럼 씁니다.',
+  side: '옆으로 누워, 폰을 얼굴 앞에 세워 들고 봅니다.',
+};
+function howToFor(method) {
+  if (method === 'thumb') return '엄지로 화면을 <b>위로 쓸면 다음</b>, <b>아래로 쓸면 이전</b> 영상입니다. 폰을 기울여도 넘어가지 않습니다.';
+  const push = radio('mapping') === 'pushNext';
+  const a = push ? '바깥으로' : '얼굴 쪽으로', b = push ? '얼굴 쪽으로' : '바깥으로';
+  const extra = method === 'fixed' ? '시작할 때 잡은 자세를 끝까지 기준으로 씁니다.'
+    : method === 'adaptive' ? '폰을 고쳐 잡고 1초쯤 가만히 있으면 그 자세를 새 기준으로 잡습니다.'
+    : '예비 시험용: 중력만 쓰고 기준을 다시 잡지 않습니다(기존 앱 방식).';
+  return `화면 <b>위쪽 끝을 ${a} 탁</b> 기울였다 돌아오면 다음, <b>${b} 탁</b> 하면 이전입니다. 기울인 채로 있으면 넘어가지 않습니다. 화면을 쓸어도 넘어가지 않습니다.<br><span class="muted">${extra}</span>`;
+}
+const handName = () => (part ? part.hand : $('hand').value) === 'L' ? '왼손' : '오른손';
+
+$('partStart').onclick = () => { const pid = readPid(); part = { pid, hand: $('hand').value, plan: planFor(pid) }; goNext(); };
+$('pilotStart').onclick = () => { part = null; showIntro({ posture: radio('posture'), method: radio('method'), step: null }); };
+function goNext() { const i = nextStep(part.pid); if (i < 0) return showDone(); showIntro(Object.assign({ step: i }, part.plan[i])); }
+
+function showIntro(c, note = '') {
+  pending = c; phase = 'intro';
+  const prev = part && c.step > 0 ? part.plan[c.step - 1] : null;
+  $('inStep').textContent = part ? `P${part.pid} · ${c.step + 1} / 6 조건` : '예비 시험 · 기록에 "예비"로 표시됩니다';
+  $('inTitle').textContent = `${NAMES.posture[c.posture]} · ${NAMES.method[c.method]}`;
+  const changed = !!(prev && prev.posture !== c.posture);
+  $('inChange').hidden = !changed;
+  if (changed) $('inChange').textContent = `자세가 바뀝니다: ${NAMES.posture[prev.posture]} → ${NAMES.posture[c.posture]}. 새 자세를 잡은 뒤 시작하세요.`;
+  $('inPosture').textContent = `${POSTURE_HOW[c.posture]} ${handName()}으로 잡습니다.`;
+  $('inMethod').innerHTML = howToFor(c.method);
+  const tilt = c.method !== 'thumb', dur = Math.max(30, parseInt($('duration').value, 10) || 180);
+  const regrip = $('regripAt').value.split(',').map(parseFloat).filter(x => x > 0);
+  const steps = [
+    tilt && '처음 한 번은 아이폰이 "동작 및 방향" 접근을 묻습니다. 허용을 누르세요.',
+    tilt && '준비 3초: 시청하는 자세로 가만히 있습니다. 이 자세가 기준이 됩니다.',
+    '연습: 화면 위 지시("다음 영상으로 ▼" / "이전 영상으로 ▲")대로 넘깁니다. 연속 5번 맞히면 끝납니다.',
+    `본 실험 ${dur}초: 4–8초마다 지시가 뜹니다.` + (regrip.length ? ` ${regrip.join('초, ')}초에는 "폰을 고쳐 잡으세요"가 3초 뜹니다. 편하게 다시 잡고 계속 봅니다.` : ''),
+    '끝나면 설문(작업 부담 6문항, 조작감, 실험자 메모)을 입력합니다.',
+  ].filter(Boolean);
+  $('inSteps').innerHTML = steps.map(s => `<li>${s}</li>`).join('');
+  $('introGo').textContent = tilt ? '자세 잡았어요 · 센서 켜고 시작' : '자세 잡았어요 · 시작';
+  $('introNote').textContent = note; $('introNote').style.color = note ? 'var(--bad)' : '';
+  $('introHome').textContent = part ? '처음 화면으로 (지금까지 한 조건은 저장돼 있어요)' : '처음 화면으로';
+  show('intro'); window.scrollTo(0, 0);
+}
+$('introHome').onclick = () => { part = null; renderPlan(); show('setup'); };
+
+$('introGo').onclick = async () => {
+  cfg = readCfg(pending);
   try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch {}
   const isTilt = cfg.method !== 'thumb';
+  sensorSeen = false;
   if (isTilt && SIM_FORCED) startSim();
   else if (isTilt) {
     const ok = await enableSensor();
-    if (!ok) { $('sensorNote').textContent = '센서 접근이 거부됐습니다. 설정 > Safari > 동작 및 방향 접근을 켜고 페이지를 새로고침하세요.'; return; }
+    if (!ok) { showIntro(pending, '센서 접근이 거부됐습니다. 설정 > 앱 > Safari > 고급에서 "동작 및 방향 접근"을 켜고 새로고침하세요.'); return; }
   }
   keepAwake();
   show('feedScreen');
   idx = 0; $('cards').innerHTML = ''; renderCard(0, null);
   if (isTilt) startCalibration(); else startPractice();
   // 실제 센서 값이 안 들어오면 가상 센서로 바꾸지 않고 멈춘다 (가짜 데이터가 섞이지 않게)
-  if (isTilt && !SIM_FORCED) setTimeout(() => { if (!sensorSeen) sensorFail(); }, 2000);
+  if (isTilt && !SIM_FORCED) setTimeout(() => { if (!sensorSeen && phase !== 'intro') sensorFail(); }, 2000);
 };
 function sensorFail() {
-  phase = 'setup'; run = null; engine = null; hideMsg(); $('cue').hidden = true; show('setup');
-  $('sensorNote').textContent = '기울기 센서 값이 들어오지 않아 시작을 멈췄습니다. 아이폰 Safari에서 열었는지, 설정 > Safari > 동작 및 방향 접근이 켜져 있는지 확인하고 새로고침하세요.';
-  $('sensorNote').style.color = 'var(--bad)';
+  run = null; engine = null; hideMsg(); $('cue').hidden = true; $('regrip').hidden = true;
+  showIntro(pending, '기울기 센서 값이 들어오지 않아 시작을 멈췄습니다. 아이폰 Safari에서 열었는지, "동작 및 방향 접근"이 켜져 있는지 확인하고 새로고침하세요.');
 }
+
+/* ---------- 참가자 완료 ---------- */
+function showDone() {
+  phase = 'done';
+  const list = partSessions(part.pid);
+  $('dnWho').textContent = `P${part.pid} · ${handName()}`;
+  $('dnTable').innerHTML = '<tr><th>조건</th><th>맞힘</th><th>놓침</th><th>오작동</th><th>TLX</th></tr>' + part.plan.map(c => {
+    const s = list.filter(x => sameCond(x, c)).pop();
+    return `<tr><td>${NAMES.posture[c.posture]} · ${NAMES.method[c.method]}</td><td>${s ? `${s.summary.hits}/${s.summary.cues}` : '–'}</td><td>${s ? s.summary.misses : '–'}</td><td>${s ? s.summary.falseFlips : '–'}</td><td>${s && s.survey ? s.survey.raw : '–'}</td></tr>`;
+  }).join('');
+  show('done'); window.scrollTo(0, 0);
+}
+function partRaws(pid) { return partSessions(pid).map(s => store.get('tf.raw.' + s.id, null) || s); }
+$('dnCsv').onclick = () => {
+  const raws = partRaws(part.pid), tag = `P${part.pid}_${today()}`;
+  saveFiles([{ name: `tiltflick_summary_${tag}.csv`, text: toCsv(CSV_HEAD, raws.map(summaryVals)), mime: 'text/csv' }, ...rawFiles(raws, tag)]);
+};
+$('dnJson').onclick = () => saveFile(`tiltflick_P${part.pid}_${today()}.json`, JSON.stringify(partRaws(part.pid)), 'application/json');
+$('dnHome').onclick = () => { part = null; $('pid').value = readPid() + 1; renderPlan(); show('setup'); };
 
 function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); phase = id === 'setup' ? 'setup' : phase; }
 
@@ -507,12 +645,13 @@ function startTrial() {
 
 $('abortBtn').onclick = (() => { let armed = false; return () => {
   if (!armed) { armed = true; $('abortBtn').textContent = '정말 중단?'; setTimeout(() => { armed = false; $('abortBtn').textContent = '중단'; }, 2500); return; }
-  armed = false; $('abortBtn').textContent = '중단'; stopSim(); phase = 'setup'; run = null; hideMsg(); $('cue').hidden = true; $('regrip').hidden = true; show('setup');
+  armed = false; $('abortBtn').textContent = '중단'; stopSim(); run = null; engine = null; hideMsg(); $('cue').hidden = true; $('regrip').hidden = true;
+  showIntro(pending, '중단했습니다. 이 조건은 저장되지 않았고, 시작을 누르면 처음부터 다시 합니다.');
 }; })();
 
 /* ---------- 매 프레임 처리 ---------- */
 function tick() {
-  if (phase === 'setup' || phase === 'survey' || phase === 'result') return;
+  if (phase !== 'calib' && phase !== 'practice' && phase !== 'trial') return;
   const t = now();
   const R = simOn ? simR() : lastR;
   let res = null;
@@ -616,7 +755,7 @@ $('feedScreen').addEventListener('touchend', e => {
 }, { passive: true });
 // 컴퓨터에서 엄지 조건 시험: 마우스 휠/방향키
 window.addEventListener('keydown', e => {
-  if (phase === 'setup' || !cfg || cfg.method !== 'thumb') return;
+  if ((phase !== 'practice' && phase !== 'trial') || !cfg || cfg.method !== 'thumb') return;
   if (e.key === 'ArrowDown') doFlip('next', 'key'); if (e.key === 'ArrowUp') doFlip('prev', 'key');
 });
 
@@ -649,9 +788,9 @@ let current = null;
 function endTrial() {
   beep(440, 300);
   $('cue').hidden = true; $('regrip').hidden = true; stopSim();
-  const id = `P${cfg.pid}_${cfg.posture}_${cfg.method}_${Date.now().toString(36)}`;
+  const id = `${cfg.mode === 'pilot' ? 'pilot_' : ''}P${cfg.pid}_${cfg.step ? cfg.step + '_' : ''}${cfg.posture}_${cfg.method}_${Date.now().toString(36)}`;
   current = {
-    id, meta: { pid: cfg.pid, hand: cfg.hand, posture: cfg.posture, method: cfg.method, mapping: cfg.mapping, start: run.wall, duration: cfg.duration,
+    id, meta: { pid: cfg.pid, hand: cfg.hand, mode: cfg.mode, step: cfg.step, posture: cfg.posture, method: cfg.method, mapping: cfg.mapping, start: run.wall, duration: cfg.duration,
       params: { T: cfg.T, W: cfg.W, stillTime: cfg.stillTime, regripAt: cfg.regripAt, gap: [cfg.gapMin, cfg.gapMax] },
       calib: calib && cfg.method !== 'thumb' ? { stillSpeed: +calib.stillSpeed.toFixed(2), tremorSd: calib.tremorSd } : null,
       sim: simOn, sensor: cfg.method === 'thumb' ? 'none' : simOn ? 'simulated' : 'device',
@@ -667,7 +806,7 @@ function endTrial() {
 const TLX = [['mental', '정신적 요구', '낮음', '높음'], ['physical', '신체적 요구', '낮음', '높음'], ['temporal', '시간적 압박', '낮음', '높음'],
              ['performance', '수행 (잘 해냈나)', '완벽', '실패'], ['effort', '노력', '적음', '많음'], ['frustration', '좌절감', '낮음', '높음']];
 function buildSurvey() {
-  $('svCond').textContent = `P${cfg.pid} · ${NAMES.posture[cfg.posture]} · ${NAMES.method[cfg.method]}`;
+  $('svCond').textContent = `${cfg.mode === 'pilot' ? '예비 · ' : ''}P${cfg.pid}${cfg.step ? ` · ${cfg.step}/6` : ''} · ${NAMES.posture[cfg.posture]} · ${NAMES.method[cfg.method]}`;
   $('tlxBox').innerHTML = '<h2>작업 부담 (NASA-TLX, 0–100)</h2>' + TLX.map(([k, n, a, b]) =>
     `<div class="tlx"><label for="tlx-${k}">${n}: <output id="o-${k}">50</output></label><input type="range" id="tlx-${k}" min="0" max="100" step="5" value="50"><div class="ends"><span>${a}</span><span>${b}</span></div></div>`).join('');
   TLX.forEach(([k]) => { $('tlx-' + k).oninput = e => $('o-' + k).textContent = e.target.value; });
@@ -684,7 +823,7 @@ $('svSave').onclick = () => {
   list.push({ id: current.id, meta: current.meta, summary: current.summary, survey: s });
   store.set('tf.sessions', list);
   if (!store.set('tf.raw.' + current.id, current)) { const lite = Object.assign({}, current, { samples: [] }); store.set('tf.raw.' + current.id, lite); }
-  renderHist(); showResult();
+  renderHist(); renderPlan(); showResult();
 };
 
 /* ---------- 결과 ---------- */
@@ -698,7 +837,9 @@ function showResult() {
     ['반응 시간 평균', u.rtMean ? u.rtMean + ' ms' : '–'], ['반응 시간 중앙값', u.rtMedian ? u.rtMedian + ' ms' : '–'],
     ['NASA-TLX 평균', current.survey.raw], ['조작감 (1–7)', current.survey.feel || '–']];
   $('rsKv').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
-  phase = 'result'; show('result');
+  if (part) { const nx = nextStep(part.pid); $('rsNext').textContent = nx < 0 ? '6개 조건 끝 · 마무리 화면으로' : `다음 조건으로 (${nx + 1}/6)`; }
+  else $('rsNext').textContent = '처음 화면으로';
+  phase = 'result'; show('result'); window.scrollTo(0, 0);
 }
 $('rsSave').onclick = () => saveFile(`${current.id}.json`, JSON.stringify(current), 'application/json');
 $('rsCsv').onclick = () => saveFiles([{ name: `tiltflick_summary_${current.id}.csv`, text: toCsv(CSV_HEAD, [summaryVals(current)]), mime: 'text/csv' }, ...rawFiles([current], current.id)]);
@@ -707,7 +848,7 @@ $('rsCopy').onclick = async () => {
   try { await navigator.clipboard.writeText(text); $('rsCopy').textContent = '복사됨'; } catch { $('rsCopy').textContent = '복사 실패: 결과 파일 저장을 쓰세요'; }
   setTimeout(() => $('rsCopy').textContent = '요약 복사', 2000);
 };
-$('rsNext').onclick = () => { show('setup'); };
+$('rsNext').onclick = () => { if (part) goNext(); else { renderPlan(); show('setup'); } };
 
 /* ---------- 시뮬레이터 (컴퓨터에서 시험할 때) ---------- */
 let shakeTimer = null;
