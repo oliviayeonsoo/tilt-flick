@@ -178,6 +178,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   <div class="hud">
     <span class="pill" id="hudLeft">연습</span>
     <span class="pill" id="hudMid"></span>
+    <span class="pill" id="hudSensor" hidden></span>
     <button id="abortBtn">중단</button>
   </div>
   <div class="cue" id="cue" hidden></div>
@@ -275,11 +276,11 @@ async function saveFile(name, text, mime) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
-const CSV_HEAD = ['id','pid','hand','posture','method','mapping','start','duration_s','cues','hits','misses','wrong','falseFlips','falseFlips_afterRegrip','held','rebases','rt_mean_ms','rt_median_ms','tlx_mental','tlx_physical','tlx_temporal','tlx_performance','tlx_effort','tlx_frustration','tlx_raw','feel_1to7','stillSpeed','tremor_sd'];
+const CSV_HEAD = ['id','pid','hand','posture','method','mapping','start','duration_s','cues','hits','misses','wrong','falseFlips','falseFlips_afterRegrip','held','rebases','rt_mean_ms','rt_median_ms','tlx_mental','tlx_physical','tlx_temporal','tlx_performance','tlx_effort','tlx_frustration','tlx_raw','feel_1to7','stillSpeed','tremor_sd','sensor','sensor_hz'];
 function csvRow(s) {
   const m = s.meta, u = s.summary, v = s.survey || {};
   const vals = [s.id, m.pid, m.hand, m.posture, m.method, m.mapping, m.start, m.duration, u.cues, u.hits, u.misses, u.wrong, u.falseFlips, u.falseFlipsAfterRegrip, u.held, u.rebases, u.rtMean, u.rtMedian,
-    v.mental, v.physical, v.temporal, v.performance, v.effort, v.frustration, v.raw, v.feel, m.calib ? m.calib.stillSpeed : '', m.calib ? m.calib.tremorSd : ''];
+    v.mental, v.physical, v.temporal, v.performance, v.effort, v.frustration, v.raw, v.feel, m.calib ? m.calib.stillSpeed : '', m.calib ? m.calib.tremorSd : '', m.sensor || (m.sim ? 'simulated' : ''), m.sensorHz];
   return vals.map(x => x === undefined || x === null ? '' : String(x).includes(',') ? `"${x}"` : x).join(',');
 }
 $('exportAll').onclick = () => {
@@ -303,10 +304,22 @@ function beep(freq = 880, ms = 160) {
 /* ---------- 센서 ---------- */
 let lastR = null, sensorSeen = false, simOn = false;
 const SIM_FORCED = new URLSearchParams(location.search).has('sim');
+// 1초마다 실제로 들어온 센서 값 개수를 화면 위에 표시 (실험자가 진짜 센서인지 바로 확인)
+let sensorCount = 0;
+setInterval(() => {
+  const el = $('hudSensor'); const hz = sensorCount; sensorCount = 0;
+  if (!el) return;
+  const tilt = cfg && cfg.method !== 'thumb';
+  el.hidden = !tilt;
+  if (!tilt) return;
+  el.textContent = simOn ? '가상 센서 · 실험 아님' : `실제 센서 ${hz}Hz`;
+  el.style.background = simOn || hz < 20 ? 'rgba(214,69,69,.85)' : 'rgba(31,157,85,.75)';
+}, 1000);
 const sim = { p: 0, r: 0, extra: 0 };
 function onOrient(e) {
   if (e.beta == null) return;
-  sensorSeen = true;
+  sensorSeen = true; sensorCount++;
+  if (run && phase === 'trial') run.sensorN = (run.sensorN || 0) + 1;
   lastR = TC.rotFromEuler(e.alpha || 0, e.beta, e.gamma || 0);
   tick();
 }
@@ -355,8 +368,14 @@ $('startBtn').onclick = async () => {
   show('feedScreen');
   idx = 0; $('cards').innerHTML = ''; renderCard(0, null);
   if (isTilt) startCalibration(); else startPractice();
-  setTimeout(() => { if (isTilt && !sensorSeen) startSim(); }, 1200);
+  // 실제 센서 값이 안 들어오면 가상 센서로 바꾸지 않고 멈춘다 (가짜 데이터가 섞이지 않게)
+  if (isTilt && !SIM_FORCED) setTimeout(() => { if (!sensorSeen) sensorFail(); }, 2000);
 };
+function sensorFail() {
+  phase = 'setup'; run = null; engine = null; hideMsg(); $('cue').hidden = true; show('setup');
+  $('sensorNote').textContent = '기울기 센서 값이 들어오지 않아 시작을 멈췄습니다. 아이폰 Safari에서 열었는지, 설정 > Safari > 동작 및 방향 접근이 켜져 있는지 확인하고 새로고침하세요.';
+  $('sensorNote').style.color = 'var(--bad)';
+}
 
 function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); phase = id === 'setup' ? 'setup' : phase; }
 
@@ -400,6 +419,7 @@ function startCalibration() {
   engine = makeEngine();
   calib = { t0: now(), speeds: [], pitches: [] };
   const timer = setInterval(() => {
+    if (phase !== 'calib') { clearInterval(timer); return; }
     const left = 3 - Math.floor((now() - calib.t0) / 1000);
     if ($('cnt')) $('cnt').textContent = Math.max(0, left);
     if (left <= 0) {
@@ -593,7 +613,9 @@ function endTrial() {
     id, meta: { pid: cfg.pid, hand: cfg.hand, posture: cfg.posture, method: cfg.method, mapping: cfg.mapping, start: run.wall, duration: cfg.duration,
       params: { T: cfg.T, W: cfg.W, stillTime: cfg.stillTime, regripAt: cfg.regripAt, gap: [cfg.gapMin, cfg.gapMax] },
       calib: calib && cfg.method !== 'thumb' ? { stillSpeed: +calib.stillSpeed.toFixed(2), tremorSd: calib.tremorSd } : null,
-      sim: simOn, ua: navigator.userAgent },
+      sim: simOn, sensor: cfg.method === 'thumb' ? 'none' : simOn ? 'simulated' : 'device',
+      sensorHz: cfg.method !== 'thumb' && !simOn ? +((run.sensorN || 0) / cfg.duration).toFixed(1) : null,
+      ua: navigator.userAgent },
     summary: summarize(run), events: run.events,
     samplesHeader: ['t_ms', 'pitch', 'roll', 'speed', 'state'], samples: run.samples,
   };
@@ -628,7 +650,9 @@ $('svSave').onclick = () => {
 function showResult() {
   const u = current.summary;
   $('rsCond').textContent = `P${current.meta.pid} · ${NAMES.posture[current.meta.posture]} · ${NAMES.method[current.meta.method]}${current.meta.sim ? ' · 시뮬레이터' : ''}`;
-  const rows = [['지시 수', u.cues], ['정확히 넘김', u.hits], ['놓침', u.misses], ['잘못 넘김', u.wrong], ['오작동', u.falseFlips],
+  const m = current.meta;
+  const sensorText = m.sensor === 'none' ? '사용 안 함 (엄지)' : m.sensor === 'simulated' ? '가상 — 실험 데이터 아님' : `실제 센서 평균 ${m.sensorHz}Hz`;
+  const rows = [['센서', sensorText], ['지시 수', u.cues], ['정확히 넘김', u.hits], ['놓침', u.misses], ['잘못 넘김', u.wrong], ['오작동', u.falseFlips],
     ['└ 고쳐 잡은 뒤 15초 안', u.falseFlipsAfterRegrip], ['기울인 채 머묾', u.held], ['기준 다시 잡기', u.rebases],
     ['반응 시간 평균', u.rtMean ? u.rtMean + ' ms' : '–'], ['반응 시간 중앙값', u.rtMedian ? u.rtMedian + ' ms' : '–'],
     ['NASA-TLX 평균', current.survey.raw], ['조작감 (1–7)', current.survey.feel || '–']];
